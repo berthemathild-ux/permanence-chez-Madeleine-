@@ -62,36 +62,20 @@ def sauvegarder_donnees(df):
     df.to_csv(DATA_FILE, index=False)
 
 # Initialisation de l'application
-st.set_page_config(page_title="Permanences Association", page_icon="🗓️", layout="wide")
-st.title("🗓️ Gestion des Permanences - Planning de l'Association")
+st.set_page_config(page_title="Permanences Chez Madeleine", page_icon="🗓️", layout="wide")
+st.title("🗓️ Gestion des permanences \"Chez Madeleine\"")
 
 # Chargement du planning actuel
 df_planning = charger_donnees()
 
-# --- PARTIE 1 : FILTRES VISUELS ET AFFICHAGE ---
-st.subheader("📊 État actuel du planning")
-
-recherche = st.text_input("🔍 Rechercher une date ou une activité (ex: 11/11/2026, Décembre, Atelier...) :")
-df_affiche = df_planning
-if recherche:
-    df_affiche = df_planning[
-        df_planning["Date"].str.contains(recherche, case=False) | 
-        df_planning["Activité"].str.contains(recherche, case=False)
-    ]
-
-colonnes_visibles = ["Date", "Créneau", "Activité", "Bénévole Référent", "Bénévole 1", "Bénévole 2"]
-st.dataframe(df_affiche[colonnes_visibles], use_container_width=True, hide_index=True)
-
-st.markdown("---")
-
-# --- PARTIE 2 : FORMULAIRE D'INSCRIPTION EN LIGNE (BÉNÉVOLES) ---
+# --- PARTIE 1 : FORMULAIRE D'INSCRIPTION EN LIGNE (BÉNÉVOLES EN HAUT) ---
 st.subheader("✍️ S'inscrire à un créneau (Espace Bénévole)")
 
 # Construire la liste des choix disponibles avec leur index réel
 options_creneaux = {}
 for idx, row in df_planning.iterrows():
     if str(row["Bénévole 1"]) == "Disponible" or str(row["Bénévole 2"]) == "Disponible":
-        texte_choix = f"{row['Date']} ({row['Créneau']}) - {row['Activité']}"
+        texte_choix = f"{row['Date']} ({row['Créneau']}) - Activité : {row['Activité']}"
         options_creneaux[texte_choix] = idx
 
 if not options_creneaux:
@@ -114,11 +98,9 @@ else:
             elif "@" not in email or "." not in email:
                 st.error("⚠️ Veuillez entrer une adresse mail valide.")
             else:
-                # Récupération de l'index exact de la ligne
                 idx_choix = options_creneaux[choix_selectionne]
                 identite_complete = f"{prenom} {nom.upper()}"
                 
-                # Assignation propre de la place
                 if str(df_planning.at[idx_choix, "Bénévole 1"]) == "Disponible":
                     df_planning.at[idx_choix, "Bénévole 1"] = identite_complete
                     df_planning.at[idx_choix, "Bénévole 1 Email"] = email
@@ -130,6 +112,22 @@ else:
                 
                 sauvegarder_donnees(df_planning)
                 st.rerun()
+
+st.markdown("---")
+
+# --- PARTIE 2 : AFFICHAGE DU PLANNING ACTUEL (EN DESSOUS) ---
+st.subheader("📊 État actuel du planning")
+
+recherche = st.text_input("🔍 Rechercher une date ou une activité dans le tableau (ex: 11/11/2026, Décembre, Atelier...) :")
+df_affiche = df_planning
+if recherche:
+    df_affiche = df_planning[
+        df_planning["Date"].str.contains(recherche, case=False) | 
+        df_planning["Activité"].str.contains(recherche, case=False)
+    ]
+
+colonnes_visibles = ["Date", "Créneau", "Activité", "Bénévole Référent", "Bénévole 1", "Bénévole 2"]
+st.dataframe(df_affiche[colonnes_visibles], use_container_width=True, hide_index=True)
 
 # --- PARTIE 3 : ZONE D'ADMINISTRATION SECURISEE ---
 st.markdown("---")
@@ -165,3 +163,5 @@ with st.expander("🛠️ Zone Administrateur (Gestion & Export des données)"):
                 os.remove(DATA_FILE)
             st.success("Le calendrier a été intégralement remis à zéro !")
             st.rerun()
+    elif code_saisi != "":
+        st.error("Code secret incorrect.")
