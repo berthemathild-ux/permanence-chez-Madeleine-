@@ -50,11 +50,10 @@ def charger_donnees():
     """Charge les inscriptions existantes ou initialise le calendrier."""
     if os.path.exists(DATA_FILE):
         df = pd.read_csv(DATA_FILE)
-        # Ajout automatique des colonnes d'emails si absentes
-        if "Bénévole 1 Email" not in df.columns:
-            df["Bénévole 1 Email"] = ""
-        if "Bénévole 2 Email" not in df.columns:
-            df["Bénévole 2 Email"] = ""
+        # Assurer la présence des bonnes colonnes
+        for col in ["Activité", "Bénévole Référent", "Bénévole 1", "Bénévole 1 Email", "Bénévole 2", "Bénévole 2 Email"]:
+            if col not in df.columns:
+                df[col] = "" if "Email" in col else "Disponible"
         return df
     return generer_dates_planning()
 
@@ -80,7 +79,6 @@ if recherche:
         df_planning["Activité"].str.contains(recherche, case=False)
     ]
 
-# On choisit les colonnes visibles publiquement pour ne pas encombrer l'écran avec les emails
 colonnes_visibles = ["Date", "Créneau", "Activité", "Bénévole Référent", "Bénévole 1", "Bénévole 2"]
 st.dataframe(df_affiche[colonnes_visibles], use_container_width=True, hide_index=True)
 
@@ -89,13 +87,14 @@ st.markdown("---")
 # --- PARTIE 2 : FORMULAIRE D'INSCRIPTION EN LIGNE (BÉNÉVOLES) ---
 st.subheader("✍️ S'inscrire à un créneau (Espace Bénévole)")
 
-creneaux_disponibles = []
-for index, row in df_planning.iterrows():
-    if row["Bénévole 1"] == "Disponible" or row["Bénévole 2"] == "Disponible":
+# Construire la liste des choix disponibles avec leur index réel
+options_creneaux = {}
+for idx, row in df_planning.iterrows():
+    if str(row["Bénévole 1"]) == "Disponible" or str(row["Bénévole 2"]) == "Disponible":
         texte_choix = f"{row['Date']} ({row['Créneau']}) - {row['Activité']}"
-        creneaux_disponibles.append((texte_choix, index))
+        options_creneaux[texte_choix] = idx
 
-if not creneaux_disponibles:
+if not options_creneaux:
     st.success("🎉 Tous les créneaux sont complets ! Merci pour votre engagement.")
 else:
     with st.form("form_inscription", clear_on_submit=True):
@@ -106,9 +105,7 @@ else:
         with col2:
             email = st.text_input("Votre Adresse Mail :").strip()
             
-        options_options = [c for c in creneaux_disponibles]
-        choix_selectionne = st.selectbox("Choisissez votre date et créneau :", options_options)
-        
+        choix_selectionne = st.selectbox("Choisissez votre date et créneau :", list(options_creneaux.keys()))
         bouton_valider = st.form_submit_button("Valider mon inscription")
         
         if bouton_valider:
@@ -117,14 +114,16 @@ else:
             elif "@" not in email or "." not in email:
                 st.error("⚠️ Veuillez entrer une adresse mail valide.")
             else:
-                idx_choix = creneaux_disponibles[options_options.index(choix_selectionne)]
+                # Récupération de l'index exact de la ligne
+                idx_choix = options_creneaux[choix_selectionne]
                 identite_complete = f"{prenom} {nom.upper()}"
                 
-                if df_planning.at[idx_choix, "Bénévole 1"] == "Disponible":
+                # Assignation propre de la place
+                if str(df_planning.at[idx_choix, "Bénévole 1"]) == "Disponible":
                     df_planning.at[idx_choix, "Bénévole 1"] = identite_complete
                     df_planning.at[idx_choix, "Bénévole 1 Email"] = email
                     st.success(f"✅ Merci {prenom} ! Inscription validée (Place 1).")
-                elif df_planning.at[idx_choix, "Bénévole 2"] == "Disponible":
+                elif str(df_planning.at[idx_choix, "Bénévole 2"]) == "Disponible":
                     df_planning.at[idx_choix, "Bénévole 2"] = identite_complete
                     df_planning.at[idx_choix, "Bénévole 2 Email"] = email
                     st.success(f"✅ Merci {prenom} ! Inscription validée (Place 2).")
@@ -141,19 +140,16 @@ with st.expander("🛠️ Zone Administrateur (Gestion & Export des données)"):
     if code_saisi == CODE_SECRET_ADMIN:
         st.success("🔓 Accès administrateur autorisé.")
         
-        # Section 1 : Voir la liste complète avec les adresses mails cachées du public
         st.markdown("### 📧 Liste complète des permanences (avec adresses mails)")
         st.dataframe(df_planning, use_container_width=True, hide_index=True)
         
-        # Section 2 : Modification des activités et référents
         st.markdown("### 📝 Assigner une Activité ou un Référent")
-        tous_les_creneaux = [(f"{row['Date']} ({row['Créneau']})", index) for index, row in df_planning.iterrows()]
-        options_admin = [c for c in tous_les_creneaux]
-        choix_admin = st.selectbox("Sélectionnez le créneau à modifier :", options_admin)
-        idx_admin = tous_les_creneaux[options_admin.index(choix_admin)]
+        options_admin = {f"{row['Date']} ({row['Créneau']})": idx for idx, row in df_planning.iterrows()}
+        choix_admin = st.selectbox("Sélectionnez le créneau à modifier :", list(options_admin.keys()))
+        idx_admin = options_admin[choix_admin]
         
-        nouvelle_activite = st.text_input("Nom de l'activité :", value=df_planning.at[idx_admin, "Activité"])
-        nouveau_referent = st.text_input("Bénévole Référent :", value=df_planning.at[idx_admin, "Bénévole Référent"])
+        nouvelle_activite = st.text_input("Nom de l'activité :", value=str(df_planning.at[idx_admin, "Activité"]))
+        nouveau_referent = st.text_input("Bénévole Référent :", value=str(df_planning.at[idx_admin, "Bénévole Référent"]))
         
         if st.button("💾 Enregistrer les modifications admin"):
             df_planning.at[idx_admin, "Activité"] = nouvelle_activite if nouvelle_activite else "Non définie"
