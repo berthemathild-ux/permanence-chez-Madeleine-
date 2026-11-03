@@ -45,17 +45,15 @@ def generer_dates_planning():
         date_courante += timedelta(days=1)
         
     df = pd.DataFrame(planning)
-    return df.astype(str) # Force toutes les colonnes en texte pur dès le départ
+    return df.astype(str)
 
 def charger_donnees():
     """Charge les inscriptions existantes ou initialise le calendrier."""
     if os.path.exists(DATA_FILE):
         df = pd.read_csv(DATA_FILE)
-        # Assurer la présence de toutes les colonnes et forcer le type texte
         for col in ["Activité", "Bénévole Référent", "Bénévole 1", "Bénévole 1 Email", "Bénévole 2", "Bénévole 2 Email"]:
             if col not in df.columns:
                 df[col] = "" if "Email" in col else "Disponible"
-        # Remplacer les valeurs vides générées par le CSV (NaN) par du texte vide propre
         df = df.fillna("")
         return df.astype(str)
     return generer_dates_planning()
@@ -63,6 +61,12 @@ def charger_donnees():
 def sauvegarder_donnees(df):
     """Enregistre le planning sur le disque."""
     df.to_csv(DATA_FILE, index=False)
+
+def styliser_tableau(val):
+    """Applique un fond blanc et du texte noir quand le créneau est pris (différent de Disponible)."""
+    if val != "Disponible" and val != "":
+        return 'background-color: white; color: black; font-weight: bold;'
+    return ''
 
 # Initialisation de l'application
 st.set_page_config(page_title="Permanences Chez Madeleine", page_icon="🗓️", layout="wide")
@@ -74,7 +78,6 @@ df_planning = charger_donnees()
 # --- PARTIE 1 : FORMULAIRE D'INSCRIPTION EN LIGNE (BÉNÉVOLES) ---
 st.subheader("✍️ S'inscrire à un créneau (Espace Bénévole)")
 
-# Construire la liste des choix disponibles avec leur index réel
 options_creneaux = {}
 for idx, row in df_planning.iterrows():
     if str(row["Bénévole 1"]) == "Disponible" or str(row["Bénévole 2"]) == "Disponible":
@@ -130,7 +133,12 @@ if recherche:
     ]
 
 colonnes_visibles = ["Date", "Créneau", "Activité", "Bénévole Référent", "Bénévole 1", "Bénévole 2"]
-st.dataframe(df_affiche[colonnes_visibles], use_container_width=True, hide_index=True)
+df_visuel = df_affiche[colonnes_visibles]
+
+# Application du style visuel (les cases prises deviennent blanches avec du texte noir)
+df_stylise = df_visuel.style.applymap(styliser_tableau, subset=["Bénévole 1", "Bénévole 2"])
+
+st.dataframe(df_stylise, use_container_width=True, hide_index=True)
 
 # --- PARTIE 3 : ZONE D'ADMINISTRATION SECURISEE ---
 st.markdown("---")
@@ -149,17 +157,13 @@ with st.expander("🛠️ Zone Administrateur (Gestion & Modérations)"):
         choix_admin = st.selectbox("Sélectionnez le créneau à configurer ou modérer :", list(options_admin.keys()))
         idx_admin = options_admin[choix_admin]
         
-        # Section 1 : Activités et Référents
         st.markdown("#### ⚙️ Paramètres du créneau")
         nouvelle_activite = st.text_input("Nom de l'activité :", value=str(df_planning.at[idx_admin, "Activité"]))
         nouveau_referent = st.text_input("Bénévole Référent :", value=str(df_planning.at[idx_admin, "Bénévole Référent"]))
         
-        # Section 2 : Inscriptions des bénévoles (Modifiables par l'admin)
         st.markdown("#### 👥 Inscriptions des bénévoles (Laisser 'Disponible' et vide pour retirer)")
-        
         val_b1 = str(df_planning.at[idx_admin, "Bénévole 1"])
         val_b1_mail = str(df_planning.at[idx_admin, "Bénévole 1 Email"])
-        
         val_b2 = str(df_planning.at[idx_admin, "Bénévole 2"])
         val_b2_mail = str(df_planning.at[idx_admin, "Bénévole 2 Email"])
         
