@@ -68,7 +68,7 @@ st.title("🗓️ Gestion des permanences \"Chez Madeleine\"")
 # Chargement du planning actuel
 df_planning = charger_donnees()
 
-# --- PARTIE 1 : FORMULAIRE D'INSCRIPTION EN LIGNE (BÉNÉVOLES EN HAUT) ---
+# --- PARTIE 1 : FORMULAIRE D'INSCRIPTION EN LIGNE (BÉNÉVOLES) ---
 st.subheader("✍️ S'inscrire à un créneau (Espace Bénévole)")
 
 # Construire la liste des choix disponibles avec leur index réel
@@ -115,7 +115,7 @@ else:
 
 st.markdown("---")
 
-# --- PARTIE 2 : AFFICHAGE DU PLANNING ACTUEL (EN DESSOUS) ---
+# --- PARTIE 2 : AFFICHAGE DU PLANNING ACTUEL ---
 st.subheader("📊 État actuel du planning")
 
 recherche = st.text_input("🔍 Rechercher une date ou une activité dans le tableau (ex: 11/11/2026, Décembre, Atelier...) :")
@@ -131,7 +131,7 @@ st.dataframe(df_affiche[colonnes_visibles], use_container_width=True, hide_index
 
 # --- PARTIE 3 : ZONE D'ADMINISTRATION SECURISEE ---
 st.markdown("---")
-with st.expander("🛠️ Zone Administrateur (Gestion & Export des données)"):
+with st.expander("🛠️ Zone Administrateur (Gestion & Modérations)"):
     
     code_saisi = st.text_input("Entrez le code secret admin pour déverrouiller :", type="password")
     
@@ -141,19 +141,47 @@ with st.expander("🛠️ Zone Administrateur (Gestion & Export des données)"):
         st.markdown("### 📧 Liste complète des permanences (avec adresses mails)")
         st.dataframe(df_planning, use_container_width=True, hide_index=True)
         
-        st.markdown("### 📝 Assigner une Activité ou un Référent")
+        st.markdown("### 📝 Modification complète d'un créneau")
         options_admin = {f"{row['Date']} ({row['Créneau']})": idx for idx, row in df_planning.iterrows()}
-        choix_admin = st.selectbox("Sélectionnez le créneau à modifier :", list(options_admin.keys()))
+        choix_admin = st.selectbox("Sélectionnez le créneau à configurer ou modérer :", list(options_admin.keys()))
         idx_admin = options_admin[choix_admin]
         
+        # Section 1 : Activités et Référents
+        st.markdown("#### ⚙️ Paramètres du créneau")
         nouvelle_activite = st.text_input("Nom de l'activité :", value=str(df_planning.at[idx_admin, "Activité"]))
         nouveau_referent = st.text_input("Bénévole Référent :", value=str(df_planning.at[idx_admin, "Bénévole Référent"]))
         
-        if st.button("💾 Enregistrer les modifications admin"):
+        # Section 2 : Inscriptions des bénévoles (Modifiables par l'admin)
+        st.markdown("#### 👥 Inscriptions des bénévoles (Laisser 'Disponible' et vide pour retirer)")
+        
+        val_b1 = str(df_planning.at[idx_admin, "Bénévole 1"])
+        val_b1_mail = str(df_planning.at[idx_admin, "Bénévole 1 Email"]) if pd.notna(df_planning.at[idx_admin, "Bénévole 1 Email"]) else ""
+        
+        val_b2 = str(df_planning.at[idx_admin, "Bénévole 2"])
+        val_b2_mail = str(df_planning.at[idx_admin, "Bénévole 2 Email"]) if pd.notna(df_planning.at[idx_admin, "Bénévole 2 Email"]) else ""
+        
+        col_b1, col_b2 = st.columns(2)
+        with col_b1:
+            admin_b1 = st.text_input("Bénévole 1 :", value=val_b1)
+            admin_b1_mail = st.text_input("Email Bénévole 1 :", value=val_b1_mail)
+        with col_b2:
+            admin_b2 = st.text_input("Bénévole 2 :", value=val_b2)
+            admin_b2_mail = st.text_input("Email Bénévole 2 :", value=val_b2_mail)
+        
+        if st.button("💾 Enregistrer toutes les modifications du créneau"):
             df_planning.at[idx_admin, "Activité"] = nouvelle_activite if nouvelle_activite else "Non définie"
             df_planning.at[idx_admin, "Bénévole Référent"] = nouveau_referent if nouveau_referent else "Non assigné"
+            
+            # Application des modulations sur le bénévole 1
+            df_planning.at[idx_admin, "Bénévole 1"] = admin_b1 if admin_b1.strip() else "Disponible"
+            df_planning.at[idx_admin, "Bénévole 1 Email"] = admin_b1_mail.strip()
+            
+            # Application des modulations sur le bénévole 2
+            df_planning.at[idx_admin, "Bénévole 2"] = admin_b2 if admin_b2.strip() else "Disponible"
+            df_planning.at[idx_admin, "Bénévole 2 Email"] = admin_b2_mail.strip()
+            
             sauvegarder_donnees(df_planning)
-            st.success("Mise à jour enregistrée avec succès !")
+            st.success("Toutes les modifications (Activités & Bénévoles) ont été enregistrées !")
             st.rerun()
             
         st.markdown("---")
