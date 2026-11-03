@@ -44,17 +44,20 @@ def generer_dates_planning():
                 
         date_courante += timedelta(days=1)
         
-    return pd.DataFrame(planning)
+    df = pd.DataFrame(planning)
+    return df.astype(str) # Force toutes les colonnes en texte pur dès le départ
 
 def charger_donnees():
     """Charge les inscriptions existantes ou initialise le calendrier."""
     if os.path.exists(DATA_FILE):
         df = pd.read_csv(DATA_FILE)
-        # Assurer la présence des bonnes colonnes
+        # Assurer la présence de toutes les colonnes et forcer le type texte
         for col in ["Activité", "Bénévole Référent", "Bénévole 1", "Bénévole 1 Email", "Bénévole 2", "Bénévole 2 Email"]:
             if col not in df.columns:
                 df[col] = "" if "Email" in col else "Disponible"
-        return df
+        # Remplacer les valeurs vides générées par le CSV (NaN) par du texte vide propre
+        df = df.fillna("")
+        return df.astype(str)
     return generer_dates_planning()
 
 def sauvegarder_donnees(df):
@@ -155,10 +158,10 @@ with st.expander("🛠️ Zone Administrateur (Gestion & Modérations)"):
         st.markdown("#### 👥 Inscriptions des bénévoles (Laisser 'Disponible' et vide pour retirer)")
         
         val_b1 = str(df_planning.at[idx_admin, "Bénévole 1"])
-        val_b1_mail = str(df_planning.at[idx_admin, "Bénévole 1 Email"]) if pd.notna(df_planning.at[idx_admin, "Bénévole 1 Email"]) else ""
+        val_b1_mail = str(df_planning.at[idx_admin, "Bénévole 1 Email"])
         
         val_b2 = str(df_planning.at[idx_admin, "Bénévole 2"])
-        val_b2_mail = str(df_planning.at[idx_admin, "Bénévole 2 Email"]) if pd.notna(df_planning.at[idx_admin, "Bénévole 2 Email"]) else ""
+        val_b2_mail = str(df_planning.at[idx_admin, "Bénévole 2 Email"])
         
         col_b1, col_b2 = st.columns(2)
         with col_b1:
@@ -169,19 +172,17 @@ with st.expander("🛠️ Zone Administrateur (Gestion & Modérations)"):
             admin_b2_mail = st.text_input("Email Bénévole 2 :", value=val_b2_mail)
         
         if st.button("💾 Enregistrer toutes les modifications du créneau"):
-            df_planning.at[idx_admin, "Activité"] = nouvelle_activite if nouvelle_activite else "Non définie"
-            df_planning.at[idx_admin, "Bénévole Référent"] = nouveau_referent if nouveau_referent else "Non assigné"
+            df_planning.at[idx_admin, "Activité"] = nouvelle_activite if nouvelle_activite.strip() else "Non définie"
+            df_planning.at[idx_admin, "Bénévole Référent"] = nouveau_referent if nouveau_referent.strip() else "Non assigné"
             
-            # Application des modulations sur le bénévole 1
-            df_planning.at[idx_admin, "Bénévole 1"] = admin_b1 if admin_b1.strip() else "Disponible"
+            df_planning.at[idx_admin, "Bénévole 1"] = admin_b1.strip() if admin_b1.strip() else "Disponible"
             df_planning.at[idx_admin, "Bénévole 1 Email"] = admin_b1_mail.strip()
             
-            # Application des modulations sur le bénévole 2
-            df_planning.at[idx_admin, "Bénévole 2"] = admin_b2 if admin_b2.strip() else "Disponible"
+            df_planning.at[idx_admin, "Bénévole 2"] = admin_b2.strip() if admin_b2.strip() else "Disponible"
             df_planning.at[idx_admin, "Bénévole 2 Email"] = admin_b2_mail.strip()
             
             sauvegarder_donnees(df_planning)
-            st.success("Toutes les modifications (Activités & Bénévoles) ont été enregistrées !")
+            st.success("Toutes les modifications ont été enregistrées !")
             st.rerun()
             
         st.markdown("---")
