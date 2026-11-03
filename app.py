@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 # 1. Configuration du fichier de sauvegarde des données
 DATA_FILE = "inscriptions_permanence.csv"
-CODE_SECRET_ADMIN = "1234"  # Vous pouvez changer ce code secret ici
+CODE_SECRET_ADMIN = "1234"  # Pensez à modifier ce code secret pour plus de sécurité
 
 def generer_dates_planning():
     """Génère la liste exacte des dates du mercredi, jeudi et vendredi sur 3 mois à partir du 11 nov 2026."""
@@ -37,7 +37,9 @@ def generer_dates_planning():
                     "Activité": "Non définie",
                     "Bénévole Référent": "Non assigné",
                     "Bénévole 1": "Disponible",
-                    "Bénévole 2": "Disponible"
+                    "Bénévole 1 Email": "",
+                    "Bénévole 2": "Disponible",
+                    "Bénévole 2 Email": ""
                 })
                 
         date_courante += timedelta(days=1)
@@ -48,11 +50,11 @@ def charger_donnees():
     """Charge les inscriptions existantes ou initialise le calendrier."""
     if os.path.exists(DATA_FILE):
         df = pd.read_csv(DATA_FILE)
-        # Sécurité si les colonnes n'existent pas dans un ancien fichier
-        if "Activité" not in df.columns:
-            df["Activité"] = "Non définie"
-        if "Bénévole Référent" not in df.columns:
-            df["Bénévole Référent"] = "Non assigné"
+        # Ajout automatique des colonnes d'emails si absentes
+        if "Bénévole 1 Email" not in df.columns:
+            df["Bénévole 1 Email"] = ""
+        if "Bénévole 2 Email" not in df.columns:
+            df["Bénévole 2 Email"] = ""
         return df
     return generer_dates_planning()
 
@@ -63,7 +65,6 @@ def sauvegarder_donnees(df):
 # Initialisation de l'application
 st.set_page_config(page_title="Permanences Association", page_icon="🗓️", layout="wide")
 st.title("🗓️ Gestion des Permanences - Planning de l'Association")
-st.write("Bénévoles : inscrivez-vous ci-dessous. Administrateurs : gérez les activités et référents en bas de page.")
 
 # Chargement du planning actuel
 df_planning = charger_donnees()
@@ -79,7 +80,9 @@ if recherche:
         df_planning["Activité"].str.contains(recherche, case=False)
     ]
 
-st.dataframe(df_affiche, use_container_width=True, hide_index=True)
+# On choisit les colonnes visibles publiquement pour ne pas encombrer l'écran avec les emails
+colonnes_visibles = ["Date", "Créneau", "Activité", "Bénévole Référent", "Bénévole 1", "Bénévole 2"]
+st.dataframe(df_affiche[colonnes_visibles], use_container_width=True, hide_index=True)
 
 st.markdown("---")
 
@@ -89,61 +92,68 @@ st.subheader("✍️ S'inscrire à un créneau (Espace Bénévole)")
 creneaux_disponibles = []
 for index, row in df_planning.iterrows():
     if row["Bénévole 1"] == "Disponible" or row["Bénévole 2"] == "Disponible":
-        texte_choix = f"{row['Date']} ({row['Créneau']}) - Activité : {row['Activité']}"
+        texte_choix = f"{row['Date']} ({row['Créneau']}) - {row['Activité']}"
         creneaux_disponibles.append((texte_choix, index))
 
 if not creneaux_disponibles:
     st.success("🎉 Tous les créneaux sont complets ! Merci pour votre engagement.")
 else:
     with st.form("form_inscription", clear_on_submit=True):
-        nom_benevole = st.text_input("Votre Nom et Prénom :").strip()
+        col1, col2 = st.columns(2)
+        with col1:
+            prenom = st.text_input("Votre Prénom :").strip()
+            nom = st.text_input("Votre Nom :").strip()
+        with col2:
+            email = st.text_input("Votre Adresse Mail :").strip()
+            
         options_options = [c for c in creneaux_disponibles]
         choix_selectionne = st.selectbox("Choisissez votre date et créneau :", options_options)
+        
         bouton_valider = st.form_submit_button("Valider mon inscription")
         
         if bouton_valider:
-            if not nom_benevole:
-                st.error("⚠️ Veuillez entrer votre nom avant de valider.")
+            if not nom or not prenom or not email:
+                st.error("⚠️ Veuillez remplir tous les champs (Nom, Prénom et Adresse Mail) avant de valider.")
+            elif "@" not in email or "." not in email:
+                st.error("⚠️ Veuillez entrer une adresse mail valide.")
             else:
-                idx_choix = creneaux_disponibles[options_options.index(choix_selectionne)][1]
+                idx_choix = creneaux_disponibles[options_options.index(choix_selectionne)]
+                identite_complete = f"{prenom} {nom.upper()}"
                 
                 if df_planning.at[idx_choix, "Bénévole 1"] == "Disponible":
-                    df_planning.at[idx_choix, "Bénévole 1"] = nom_benevole
-                    st.success(f"✅ Merci {nom_benevole} ! Inscrit(e) sur le créneau (Place 1).")
+                    df_planning.at[idx_choix, "Bénévole 1"] = identite_complete
+                    df_planning.at[idx_choix, "Bénévole 1 Email"] = email
+                    st.success(f"✅ Merci {prenom} ! Inscription validée (Place 1).")
                 elif df_planning.at[idx_choix, "Bénévole 2"] == "Disponible":
-                    df_planning.at[idx_choix, "Bénévole 2"] = nom_benevole
-                    st.success(f"✅ Merci {nom_benevole} ! Inscrit(e) sur le créneau (Place 2).")
+                    df_planning.at[idx_choix, "Bénévole 2"] = identite_complete
+                    df_planning.at[idx_choix, "Bénévole 2 Email"] = email
+                    st.success(f"✅ Merci {prenom} ! Inscription validée (Place 2).")
                 
                 sauvegarder_donnees(df_planning)
                 st.rerun()
 
 # --- PARTIE 3 : ZONE D'ADMINISTRATION SECURISEE ---
 st.markdown("---")
-with st.expander("🛠️ Zone Administrateur (Gestion des Activités & Référents)"):
+with st.expander("🛠️ Zone Administrateur (Gestion & Export des données)"):
     
     code_saisi = st.text_input("Entrez le code secret admin pour déverrouiller :", type="password")
     
     if code_saisi == CODE_SECRET_ADMIN:
         st.success("🔓 Accès administrateur autorisé.")
         
-        # Formulaire de modification d'un créneau
+        # Section 1 : Voir la liste complète avec les adresses mails cachées du public
+        st.markdown("### 📧 Liste complète des permanences (avec adresses mails)")
+        st.dataframe(df_planning, use_container_width=True, hide_index=True)
+        
+        # Section 2 : Modification des activités et référents
         st.markdown("### 📝 Assigner une Activité ou un Référent")
-        
-        tous_les_creneaux = [
-            (f"{row['Date']} ({row['Créneau']})", index) 
-            for index, row in df_planning.iterrows()
-        ]
-        
+        tous_les_creneaux = [(f"{row['Date']} ({row['Créneau']})", index) for index, row in df_planning.iterrows()]
         options_admin = [c for c in tous_les_creneaux]
         choix_admin = st.selectbox("Sélectionnez le créneau à modifier :", options_admin)
-        idx_admin = tous_les_creneaux[options_admin.index(choix_admin)][1]
+        idx_admin = tous_les_creneaux[options_admin.index(choix_admin)]
         
-        # Pré-remplir les champs avec les valeurs actuelles
-        activite_actuelle = df_planning.at[idx_admin, "Activité"]
-        referent_actuel = df_planning.at[idx_admin, "Bénévole Référent"]
-        
-        nouvelle_activite = st.text_input("Nom de l'activité / Description :", value=activite_actuelle)
-        nouveau_referent = st.text_input("Bénévole Référent désigné :", value=referent_actuel)
+        nouvelle_activite = st.text_input("Nom de l'activité :", value=df_planning.at[idx_admin, "Activité"])
+        nouveau_referent = st.text_input("Bénévole Référent :", value=df_planning.at[idx_admin, "Bénévole Référent"])
         
         if st.button("💾 Enregistrer les modifications admin"):
             df_planning.at[idx_admin, "Activité"] = nouvelle_activite if nouvelle_activite else "Non définie"
@@ -154,11 +164,8 @@ with st.expander("🛠️ Zone Administrateur (Gestion des Activités & Référe
             
         st.markdown("---")
         st.markdown("### ⚠️ Réinitialisation globale")
-        st.warning("Cette action effacera absolument toutes les données et recréera un calendrier vierge.")
         if st.button("🔄 Réinitialiser tout le planning"):
             if os.path.exists(DATA_FILE):
                 os.remove(DATA_FILE)
             st.success("Le calendrier a été intégralement remis à zéro !")
             st.rerun()
-    elif code_saisi != "":
-        st.error("Code secret incorrect.")
