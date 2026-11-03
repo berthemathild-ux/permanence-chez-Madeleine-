@@ -1,24 +1,52 @@
 import streamlit as st
 import pandas as pd
 import os
+from datetime import datetime, timedelta
 
 # 1. Configuration du fichier de sauvegarde des données
 DATA_FILE = "inscriptions_permanence.csv"
 
+def generer_dates_planning():
+    """Génère la liste exacte des dates du mercredi, jeudi et vendredi sur 3 mois à partir du 11 nov 2026."""
+    date_debut = datetime(2026, 11, 11)
+    date_fin = date_debut + timedelta(days=90) # ~ 3 mois
+    
+    jours_vises = {2: "Mercredi", 3: "Jeudi", 4: "Vendredi"} # 2=Mercredi, 3=Jeudi, 4=Vendredi en Python
+    
+    planning = []
+    date_courante = date_debut
+    
+    while date_courante <= date_fin:
+        num_jour = date_courante.weekday() # Détermine le jour de la semaine
+        
+        if num_jour in jours_vises:
+            nom_jour = jours_vises[num_jour]
+            date_formatee = date_courante.strftime("%d/%m/%Y")
+            label_date = f"{nom_jour} {date_formatee}"
+            
+            # Application de vos créneaux spécifiques par jour
+            if nom_jour == "Mercredi":
+                creneaux = ["10h - 14h", "14h - 18h", "18h - 22h"]
+            else: # Jeudi et Vendredi
+                creneaux = ["18h - 22h"]
+                
+            for creneau in creneaux:
+                planning.append({
+                    "Date": label_date,
+                    "Créneau": creneau,
+                    "Bénévole 1": "Disponible",
+                    "Bénévole 2": "Disponible"
+                })
+                
+        date_courante += timedelta(days=1)
+        
+    return pd.DataFrame(planning)
+
 def charger_donnees():
-    """Charge les inscriptions existantes ou crée le planning avec les créneaux spécifiques."""
+    """Charge les inscriptions existantes ou initialise le calendrier sur 3 mois."""
     if os.path.exists(DATA_FILE):
         return pd.read_csv(DATA_FILE)
-    
-    # Configuration précise de vos créneaux par jour
-    planning_initial = [
-        {"Jour": "Mercredi", "Créneau": "10h - 14h", "Bénévole 1": "Disponible", "Bénévole 2": "Disponible"},
-        {"Jour": "Mercredi", "Créneau": "14h - 18h", "Bénévole 1": "Disponible", "Bénévole 2": "Disponible"},
-        {"Jour": "Mercredi", "Créneau": "18h - 22h", "Bénévole 1": "Disponible", "Bénévole 2": "Disponible"},
-        {"Jour": "Jeudi", "Créneau": "18h - 22h", "Bénévole 1": "Disponible", "Bénévole 2": "Disponible"},
-        {"Jour": "Vendredi", "Créneau": "18h - 22h", "Bénévole 1": "Disponible", "Bénévole 2": "Disponible"}
-    ]
-    return pd.DataFrame(planning_initial)
+    return generer_dates_planning()
 
 def sauvegarder_donnees(df):
     """Enregistre le planning sur le disque."""
@@ -26,15 +54,22 @@ def sauvegarder_donnees(df):
 
 # Initialisation de l'application
 st.set_page_config(page_title="Permanences Association", page_icon="🗓️", layout="wide")
-st.title("🗓️ Gestion des Permanences de l'Association")
-st.write("Inscrivez-vous sur les créneaux disponibles. Maximum 2 bénévoles par créneau.")
+st.title("🗓️ Gestion des Permanences - Planning sur 3 mois")
+st.write("Sélectionnez une date et inscrivez-vous. Maximum 2 bénévoles par créneau.")
 
 # Chargement du planning actuel
 df_planning = charger_donnees()
 
-# --- PARTIE 1 : AFFICHAGE DU PLANNING ACTUEL ---
+# --- PARTIE 1 : FILTRES VISUELS POUR LES BÉNÉVOLES ---
 st.subheader("📊 État actuel du planning")
-st.dataframe(df_planning, use_container_width=True, hide_index=True)
+
+# Optionnel : un filtre par date pour éviter que le tableau soit trop long à parcourir
+recherche = st.text_input("🔍 Rechercher une date spécifique (ex: 11/11/2026 ou Décembre) :")
+df_affiche = df_planning
+if recherche:
+    df_affiche = df_planning[df_planning["Date"].str.contains(recherche, case=False)]
+
+st.dataframe(df_affiche, use_container_width=True, hide_index=True)
 
 st.markdown("---")
 
@@ -45,19 +80,18 @@ st.subheader("✍️ S'inscrire à un créneau")
 creneaux_disponibles = []
 for index, row in df_planning.iterrows():
     if row["Bénévole 1"] == "Disponible" or row["Bénévole 2"] == "Disponible":
-        texte_choix = f"{row['Jour']} de {row['Créneau']}"
+        texte_choix = f"{row['Date']} de {row['Créneau']}"
         creneaux_disponibles.append((texte_choix, index))
 
 if not creneaux_disponibles:
     st.success("🎉 Tous les créneaux sont complets ! Merci pour votre engagement.")
 else:
-    # Création du formulaire d'inscription
     with st.form("form_inscription", clear_on_submit=True):
         nom_benevole = st.text_input("Votre Nom et Prénom :").strip()
         
-        # Liste déroulante dynamique contenant uniquement les créneaux avec de la place
+        # Liste déroulante avec toutes les dates réelles sur 3 mois
         options_options = [c for c in creneaux_disponibles]
-        choix_selectionne = st.selectbox("Choisissez votre créneau :", options_options)
+        choix_selectionne = st.selectbox("Choisissez votre date et créneau :", options_options)
         
         bouton_valider = st.form_submit_button("Valider mon inscription")
         
@@ -65,27 +99,26 @@ else:
             if not nom_benevole:
                 st.error("⚠️ Veuillez entrer votre nom avant de valider.")
             else:
-                # Retrouver l'index de la ligne choisie dans le tableau original
+                # Retrouver l'index de la ligne choisie
                 idx_choix = creneaux_disponibles[options_options.index(choix_selectionne)][1]
                 
-                # Assigner la place disponible (priorité au Bénévole 1, puis Bénévole 2)
+                # Assigner la place disponible
                 if df_planning.at[idx_choix, "Bénévole 1"] == "Disponible":
                     df_planning.at[idx_choix, "Bénévole 1"] = nom_benevole
-                    st.success(f"✅ Merci {nom_benevole} ! Vous êtes inscrit pour le {choix_selectionne[0]} (Place 1).")
+                    st.success(f"✅ Merci {nom_benevole} ! Inscrit(e) le {choix_selectionne[0]} (Place 1).")
                 elif df_planning.at[idx_choix, "Bénévole 2"] == "Disponible":
                     df_planning.at[idx_choix, "Bénévole 2"] = nom_benevole
-                    st.success(f"✅ Merci {nom_benevole} ! Vous êtes inscrit pour le {choix_selectionne[0]} (Place 2).")
+                    st.success(f"✅ Merci {nom_benevole} ! Inscrit(e) le {choix_selectionne[0]} (Place 2).")
                 
-                # Sauvegarde immédiate des données et rechargement visuel
                 sauvegarder_donnees(df_planning)
                 st.rerun()
 
-# --- PARTIE 3 : ZONE D'ADMINISTRATION (POUR RÉINITIALISER) ---
+# --- PARTIE 3 : ZONE D'ADMINISTRATION ---
 st.markdown("---")
 with st.expander("🛠️ Zone Administrateur (Masquée par défaut)"):
-    st.warning("Attention : cette action videra toutes les inscriptions actuelles.")
+    st.warning("Attention : cette action effacera toutes les inscriptions de ces 3 mois.")
     if st.button("🔄 Réinitialiser tout le planning"):
         if os.path.exists(DATA_FILE):
             os.remove(DATA_FILE)
-        st.success("Le planning a été remis à zéro avec succès !")
+        st.success("Le calendrier de 3 mois a été remis à zéro !")
         st.rerun()
