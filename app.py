@@ -3,196 +3,111 @@ import pandas as pd
 import os
 from datetime import datetime, timedelta
 
-# 1. Configuration du fichier de sauvegarde des données
 DATA_FILE = "inscriptions_permanence.csv"
-CODE_SECRET_ADMIN = "1234"  # Pensez à modifier ce code secret pour plus de sécurité
+CODE_SECRET_ADMIN = "1234"
 
 @st.cache_data
 def generer_dates_planning_fixe():
-    """Génère la structure du calendrier une seule fois et la garde en mémoire pour accélérer le site."""
     date_debut = datetime(2026, 11, 11)
-    date_fin = date_debut + timedelta(days=90) # ~ 3 mois
-    
+    date_fin = date_debut + timedelta(days=90)
     jours_vises = {2: "Mercredi", 3: "Jeudi", 4: "Vendredi"}
-    
     planning = []
     date_courante = date_debut
-    
     while date_courante <= date_fin:
         num_jour = date_courante.weekday()
-        
         if num_jour in jours_vises:
             nom_jour = jours_vises[num_jour]
             date_formatee = date_courante.strftime("%d/%m/%Y")
             label_date = f"{nom_jour} {date_formatee}"
-            
-            if nom_jour == "Mercredi":
-                creneaux = ["10h - 14h", "14h - 18h", "18h - 22h"]
-            else:
-                creneaux = ["18h - 22h"]
-                
+            creneaux = ["10h - 14h", "14h - 18h", "18h - 22h"] if nom_jour == "Mercredi" else ["18h - 22h"]
             for creneau in creneaux:
                 planning.append({
-                    "Date": label_date,
-                    "Créneau": creneau,
-                    "Activité": "Non définie",
-                    "Bénévole Référent": "Non assigné",
-                    "Bénévole 1": "Disponible",
-                    "Bénévole 1 Email": "",
-                    "Bénévole 2": "Disponible",
-                    "Bénévole 2 Email": ""
+                    "Date": label_date, "Créneau": creneau, "Activité": "Non définie",
+                    "Bénévole Référent": "Non assigné", "Bénévole 1": "Disponible",
+                    "Bénévole 1 Email": "", "Bénévole 2": "Disponible", "Bénévole 2 Email": ""
                 })
-                
         date_courante += timedelta(days=1)
-        
-    df = pd.DataFrame(planning)
-    return df.astype(str)
+    return pd.DataFrame(planning).astype(str)
 
 def charger_donnees():
-    """Charge les inscriptions existantes de manière ultra-rapide."""
     if os.path.exists(DATA_FILE):
-        df = pd.read_csv(DATA_FILE)
-        # Remplacer les valeurs vides générées par le CSV (NaN) par du texte vide propre
-        df = df.fillna("")
+        df = pd.read_csv(DATA_FILE).fillna("")
         return df.astype(str)
     return generer_dates_planning_fixe()
 
 def sauvegarder_donnees(df):
-    """Enregistre le planning sur le disque."""
     df.to_csv(DATA_FILE, index=False)
 
-def styliser_tableau(val):
-    """Met en valeur les cases : fond blanc pour les créneaux pris."""
-    if val != "Disponible" and val != "":
-        return 'background-color: #FFFFFF; color: #000000; font-weight: bold;'
-    return 'color: #888888;'
+st.set_page_config(page_title="Chez Madeleine", page_icon="🗓️", layout="centered") # Mode centré plus rapide à charger
+st.title("🗓️ Permanences \"Chez Madeleine\"")
 
-# Initialisation de l'application
-st.set_page_config(page_title="Permanences Chez Madeleine", page_icon="🗓️", layout="wide")
-st.title("🗓️ Gestion des permanences \"Chez Madeleine\"")
-
-# Chargement immédiat du planning actuel
 df_planning = charger_donnees()
 
-# --- PARTIE 1 : FORMULAIRE D'INSCRIPTION EN LIGNE (BÉNÉVOLES) ---
-st.subheader("✍️ S'inscrire à un créneau (Espace Bénévole)")
-
+# FORMULAIRE
+st.subheader("✍️ Inscription rapide")
 options_creneaux = {}
 for idx, row in df_planning.iterrows():
     if str(row["Bénévole 1"]) == "Disponible" or str(row["Bénévole 2"]) == "Disponible":
-        texte_choix = f"{row['Date']} ({row['Créneau']}) - Activité : {row['Activité']}"
+        texte_choix = f"{row['Date']} ({row['Créneau']}) - {row['Activité']}"
         options_creneaux[texte_choix] = idx
 
 if not options_creneaux:
-    st.success("🎉 Tous les créneaux sont complets ! Merci pour votre engagement.")
+    st.success("🎉 Tous les créneaux sont complets !")
 else:
     with st.form("form_inscription", clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            prenom = st.text_input("Votre Prénom :").strip()
-            nom = st.text_input("Votre Nom :").strip()
-        with col2:
-            email = st.text_input("Votre Adresse Mail :").strip()
-            
-        choix_selectionne = st.selectbox("Choisissez votre date et créneau :", list(options_creneaux.keys()))
-        bouton_valider = st.form_submit_button("Valider mon inscription")
-        
-        if bouton_valider:
+        prenom = st.text_input("Prénom :").strip()
+        nom = st.text_input("Nom :").strip()
+        email = st.text_input("Adresse Mail :").strip()
+        choix_selectionne = st.selectbox("Créneau :", list(options_creneaux.keys()))
+        if st.form_submit_button("Valider mon inscription"):
             if not nom or not prenom or not email:
-                st.error("⚠️ Veuillez remplir tous les champs (Nom, Prénom et Adresse Mail) avant de valider.")
-            elif "@" not in email or "." not in email:
-                st.error("⚠️ Veuillez entrer une adresse mail valide.")
+                st.error("⚠️ Tous les champs sont obligatoires.")
+            elif "@" not in email:
+                st.error("⚠️ Email invalide.")
             else:
                 idx_choix = options_creneaux[choix_selectionne]
-                identite_complete = f"{prenom} {nom.upper()}"
-                
+                identite = f"{prenom} {nom.upper()}"
                 if str(df_planning.at[idx_choix, "Bénévole 1"]) == "Disponible":
-                    df_planning.at[idx_choix, "Bénévole 1"] = identite_complete
+                    df_planning.at[idx_choix, "Bénévole 1"] = identite
                     df_planning.at[idx_choix, "Bénévole 1 Email"] = email
-                    st.success(f"✅ Merci {prenom} ! Inscription validée (Place 1).")
-                elif str(df_planning.at[idx_choix, "Bénévole 2"]) == "Disponible":
-                    df_planning.at[idx_choix, "Bénévole 2"] = identite_complete
+                else:
+                    df_planning.at[idx_choix, "Bénévole 2"] = identite
                     df_planning.at[idx_choix, "Bénévole 2 Email"] = email
-                    st.success(f"✅ Merci {prenom} ! Inscription validée (Place 2).")
-                
                 sauvegarder_donnees(df_planning)
+                st.success("✅ Inscription réussie !")
                 st.rerun()
 
 st.markdown("---")
 
-# --- PARTIE 2 : AFFICHAGE DU PLANNING ACTUEL ---
-st.subheader("📊 État actuel du planning")
+# TABLEAU ALLÉGÉ
+st.subheader("📊 Voir les créneaux occupés")
+recherche = st.text_input("🔍 Filtrer par date (ex: 11/11/2026, Décembre) :").strip()
+df_visuel = df_planning[["Date", "Créneau", "Activité", "Bénévole Référent", "Bénévole 1", "Bénévole 2"]]
 
-recherche = st.text_input("🔍 Rechercher une date ou une activité dans le tableau (ex: 11/11/2026, Décembre, Atelier...) :")
-df_affiche = df_planning
 if recherche:
-    df_affiche = df_planning[
-        df_planning["Date"].str.contains(recherche, case=False) | 
-        df_planning["Activité"].str.contains(recherche, case=False)
-    ]
+    df_visuel = df_visuel[df_visuel["Date"].str.contains(recherche, case=False)]
+else:
+    # N'affiche que les 15 prochains créneaux par défaut pour économiser la mémoire du téléphone
+    df_visuel = df_visuel.head(15)
 
-colonnes_visibles = ["Date", "Créneau", "Activité", "Bénévole Référent", "Bénévole 1", "Bénévole 2"]
-df_visuel = df_affiche[colonnes_visibles]
+st.table(df_visuel) # Utilisation de st.table (génère du HTML simple, beaucoup plus rapide que st.dataframe)
 
-df_stylise = df_visuel.style.map(styliser_tableau, subset=["Bénévole 1", "Bénévole 2"])
-st.dataframe(df_stylise, use_container_width=True, hide_index=True)
-
-# --- PARTIE 3 : ZONE D'ADMINISTRATION SECURISEE ---
-st.markdown("---")
-with st.expander("🛠️ Zone Administrateur (Gestion & Modérations)"):
-    
-    code_saisi = st.text_input("Entrez le code secret admin pour déverrouiller :", type="password")
-    
+# ADMIN
+with st.expander("🛠️ Zone Administrateur"):
+    code_saisi = st.text_input("Code secret :", type="password")
     if code_saisi == CODE_SECRET_ADMIN:
-        st.success("🔓 Accès administrateur autorisé.")
-        
-        st.markdown("### 📧 Liste complète des permanences (avec adresses mails)")
-        st.dataframe(df_planning, use_container_width=True, hide_index=True)
-        
-        st.markdown("### 📝 Modification complète d'un créneau")
+        st.dataframe(df_planning)
         options_admin = {f"{row['Date']} ({row['Créneau']})": idx for idx, row in df_planning.iterrows()}
-        choix_admin = st.selectbox("Sélectionnez le créneau à configurer ou modérer :", list(options_admin.keys()))
+        choix_admin = st.selectbox("Modifier créneau :", list(options_admin.keys()))
         idx_admin = options_admin[choix_admin]
-        
-        st.markdown("#### ⚙️ Paramètres du créneau")
-        nouvelle_activite = st.text_input("Nom de l'activité :", value=str(df_planning.at[idx_admin, "Activité"]))
-        nouveau_referent = st.text_input("Bénévole Référent :", value=str(df_planning.at[idx_admin, "Bénévole Référent"]))
-        
-        st.markdown("#### 👥 Inscriptions des bénévoles")
-        val_b1 = str(df_planning.at[idx_admin, "Bénévole 1"])
-        val_b1_mail = str(df_planning.at[idx_admin, "Bénévole 1 Email"])
-        val_b2 = str(df_planning.at[idx_admin, "Bénévole 2"])
-        val_b2_mail = str(df_planning.at[idx_admin, "Bénévole 2 Email"])
-        
-        col_b1, col_b2 = st.columns(2)
-        with col_b1:
-            admin_b1 = st.text_input("Bénévole 1 :", value=val_b1)
-            admin_b1_mail = st.text_input("Email Bénévole 1 :", value=val_b1_mail)
-        with col_b2:
-            admin_b2 = st.text_input("Bénévole 2 :", value=val_b2)
-            admin_b2_mail = st.text_input("Email Bénévole 2 :", value=val_b2_mail)
-        
-        if st.button("💾 Enregistrer toutes les modifications du créneau"):
-            df_planning.at[idx_admin, "Activité"] = nouvelle_activite if nouvelle_activite.strip() else "Non définie"
-            df_planning.at[idx_admin, "Bénévole Référent"] = nouveau_referent if nouveau_referent.strip() else "Non assigné"
-            
-            df_planning.at[idx_admin, "Bénévole 1"] = admin_b1.strip() if admin_b1.strip() else "Disponible"
-            df_planning.at[idx_admin, "Bénévole 1 Email"] = admin_b1_mail.strip()
-            
-            df_planning.at[idx_admin, "Bénévole 2"] = admin_b2.strip() if admin_b2.strip() else "Disponible"
-            df_planning.at[idx_admin, "Bénévole 2 Email"] = admin_b2_mail.strip()
-            
+        act = st.text_input("Activité :", value=str(df_planning.at[idx_admin, "Activité"]))
+        ref = st.text_input("Référent :", value=str(df_planning.at[idx_admin, "Bénévole Référent"]))
+        b1 = st.text_input("Bénévole 1 :", value=str(df_planning.at[idx_admin, "Bénévole 1"]))
+        b2 = st.text_input("Bénévole 2 :", value=str(df_planning.at[idx_admin, "Bénévole 2"]))
+        if st.button("💾 Sauvegarder Admin"):
+            df_planning.at[idx_admin, "Activité"] = act
+            df_planning.at[idx_admin, "Bénévole Référent"] = ref
+            df_planning.at[idx_admin, "Bénévole 1"] = b1
+            df_planning.at[idx_admin, "Bénévole 2"] = b2
             sauvegarder_donnees(df_planning)
-            st.success("Toutes les modifications ont été enregistrées !")
             st.rerun()
-            
-        st.markdown("---")
-        st.markdown("### ⚠️ Réinitialisation globale")
-        if st.button("🔄 Réinitialiser tout le planning"):
-            if os.path.exists(DATA_FILE):
-                os.remove(DATA_FILE)
-            st.cache_data.clear() # Force à vider la mémoire cache pour reconstruire proprement
-            st.success("Le calendrier a été intégralement remis à zéro !")
-            st.rerun()
-    elif code_saisi != "":
-        st.error("Code secret incorrect.")
