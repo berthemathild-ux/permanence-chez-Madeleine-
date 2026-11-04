@@ -7,8 +7,9 @@ from datetime import datetime, timedelta
 DATA_FILE = "inscriptions_permanence.csv"
 CODE_SECRET_ADMIN = "1234"  # Pensez à modifier ce code secret pour plus de sécurité
 
-def generer_dates_planning():
-    """Génère la liste exacte des dates du mercredi, jeudi et vendredi sur 3 mois à partir du 11 nov 2026."""
+@st.cache_data
+def generer_dates_planning_fixe():
+    """Génère la structure du calendrier une seule fois et la garde en mémoire pour accélérer le site."""
     date_debut = datetime(2026, 11, 11)
     date_fin = date_debut + timedelta(days=90) # ~ 3 mois
     
@@ -45,36 +46,37 @@ def generer_dates_planning():
         date_courante += timedelta(days=1)
         
     df = pd.DataFrame(planning)
-    return df.astype(str) # Force toutes les colonnes en texte pur dès le départ
+    return df.astype(str)
 
 def charger_donnees():
-    """Charge les inscriptions existantes ou initialise le calendrier."""
+    """Charge les inscriptions existantes de manière ultra-rapide."""
     if os.path.exists(DATA_FILE):
         df = pd.read_csv(DATA_FILE)
-        # Assurer la présence de toutes les colonnes et forcer le type texte
-        for col in ["Activité", "Bénévole Référent", "Bénévole 1", "Bénévole 1 Email", "Bénévole 2", "Bénévole 2 Email"]:
-            if col not in df.columns:
-                df[col] = "" if "Email" in col else "Disponible"
         # Remplacer les valeurs vides générées par le CSV (NaN) par du texte vide propre
         df = df.fillna("")
         return df.astype(str)
-    return generer_dates_planning()
+    return generer_dates_planning_fixe()
 
 def sauvegarder_donnees(df):
     """Enregistre le planning sur le disque."""
     df.to_csv(DATA_FILE, index=False)
 
+def styliser_tableau(val):
+    """Met en valeur les cases : fond blanc pour les créneaux pris."""
+    if val != "Disponible" and val != "":
+        return 'background-color: #FFFFFF; color: #000000; font-weight: bold;'
+    return 'color: #888888;'
+
 # Initialisation de l'application
 st.set_page_config(page_title="Permanences Chez Madeleine", page_icon="🗓️", layout="wide")
 st.title("🗓️ Gestion des permanences \"Chez Madeleine\"")
 
-# Chargement du planning actuel
+# Chargement immédiat du planning actuel
 df_planning = charger_donnees()
 
 # --- PARTIE 1 : FORMULAIRE D'INSCRIPTION EN LIGNE (BÉNÉVOLES) ---
 st.subheader("✍️ S'inscrire à un créneau (Espace Bénévole)")
 
-# Construire la liste des choix disponibles avec leur index réel
 options_creneaux = {}
 for idx, row in df_planning.iterrows():
     if str(row["Bénévole 1"]) == "Disponible" or str(row["Bénévole 2"]) == "Disponible":
@@ -130,7 +132,10 @@ if recherche:
     ]
 
 colonnes_visibles = ["Date", "Créneau", "Activité", "Bénévole Référent", "Bénévole 1", "Bénévole 2"]
-st.dataframe(df_affiche[colonnes_visibles], use_container_width=True, hide_index=True)
+df_visuel = df_affiche[colonnes_visibles]
+
+df_stylise = df_visuel.style.map(styliser_tableau, subset=["Bénévole 1", "Bénévole 2"])
+st.dataframe(df_stylise, use_container_width=True, hide_index=True)
 
 # --- PARTIE 3 : ZONE D'ADMINISTRATION SECURISEE ---
 st.markdown("---")
@@ -149,17 +154,13 @@ with st.expander("🛠️ Zone Administrateur (Gestion & Modérations)"):
         choix_admin = st.selectbox("Sélectionnez le créneau à configurer ou modérer :", list(options_admin.keys()))
         idx_admin = options_admin[choix_admin]
         
-        # Section 1 : Activités et Référents
         st.markdown("#### ⚙️ Paramètres du créneau")
         nouvelle_activite = st.text_input("Nom de l'activité :", value=str(df_planning.at[idx_admin, "Activité"]))
         nouveau_referent = st.text_input("Bénévole Référent :", value=str(df_planning.at[idx_admin, "Bénévole Référent"]))
         
-        # Section 2 : Inscriptions des bénévoles (Modifiables par l'admin)
-        st.markdown("#### 👥 Inscriptions des bénévoles (Laisser 'Disponible' et vide pour retirer)")
-        
+        st.markdown("#### 👥 Inscriptions des bénévoles")
         val_b1 = str(df_planning.at[idx_admin, "Bénévole 1"])
         val_b1_mail = str(df_planning.at[idx_admin, "Bénévole 1 Email"])
-        
         val_b2 = str(df_planning.at[idx_admin, "Bénévole 2"])
         val_b2_mail = str(df_planning.at[idx_admin, "Bénévole 2 Email"])
         
@@ -190,6 +191,7 @@ with st.expander("🛠️ Zone Administrateur (Gestion & Modérations)"):
         if st.button("🔄 Réinitialiser tout le planning"):
             if os.path.exists(DATA_FILE):
                 os.remove(DATA_FILE)
+            st.cache_data.clear() # Force à vider la mémoire cache pour reconstruire proprement
             st.success("Le calendrier a été intégralement remis à zéro !")
             st.rerun()
     elif code_saisi != "":
